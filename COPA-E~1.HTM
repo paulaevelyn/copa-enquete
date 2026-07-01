@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enquete &mdash; Psicoterapia e Afins</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #F5F0E8;
+      font-family: 'Lato', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px 16px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 14px;
+      padding: 44px 40px;
+      max-width: 500px;
+      width: 100%;
+      box-shadow: 0 6px 40px rgba(46,46,46,0.09);
+    }
+
+    .eyebrow {
+      display: block;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+      color: #D96C63;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      font-family: 'Playfair Display', serif;
+      font-size: 22px;
+      line-height: 1.45;
+      color: #2E2E2E;
+      margin-bottom: 28px;
+    }
+
+    /* ── OPÇÕES ── */
+    .option {
+      display: block;
+      width: 100%;
+      padding: 15px 18px;
+      margin-bottom: 10px;
+      background: #F5F0E8;
+      border: 2px solid transparent;
+      border-radius: 8px;
+      font-family: 'Lato', sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      color: #2E2E2E;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+    .option:hover {
+      border-color: #D96C63;
+      background: #fff;
+    }
+
+    /* ── RESULTADO ── */
+    .thanks {
+      display: block;
+      font-size: 14px;
+      font-weight: 700;
+      color: #5E7D73;
+      margin-bottom: 20px;
+    }
+
+    .result-item { margin-bottom: 18px; }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 10px;
+      margin-bottom: 7px;
+    }
+    .result-label {
+      font-size: 14px;
+      line-height: 1.5;
+      color: #2E2E2E;
+    }
+    .result-label.bold { font-weight: 700; }
+    .result-pct {
+      font-size: 15px;
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+      color: #5E7D73;
+    }
+    .result-pct.highlight { color: #D96C63; }
+
+    .bar-wrap {
+      background: #F5F0E8;
+      border-radius: 20px;
+      height: 9px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 20px;
+      background: #5E7D73;
+      width: 0;
+      transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .bar-fill.coral { background: #D96C63; }
+
+    .total-count {
+      font-size: 13px;
+      color: #aaa;
+      margin-top: 20px;
+      text-align: right;
+    }
+
+    .back-link {
+      display: inline-block;
+      margin-top: 24px;
+      font-size: 13px;
+      color: #D96C63;
+      text-decoration: none;
+    }
+    .back-link:hover { text-decoration: underline; }
+
+    .state-msg {
+      text-align: center;
+      color: #aaa;
+      font-size: 15px;
+      padding: 24px 0;
+    }
+
+    @media (max-width: 480px) {
+      .card { padding: 30px 22px; }
+      h1 { font-size: 19px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="card" id="app">
+  <p class="state-msg">Carregando&hellip;</p>
+</div>
+
+<script type="module">
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  // CONFIGURAÇÃO — substitua pelos seus valores
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  const DB_URL = 'https://copa2026-ce68b-default-rtdb.firebaseio.com';
+  // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  const POLL_PATH = '/copa2026';
+
+  const OPTIONS = [
+    'Em modo sobrevivência — ansiedade, tensão, coração na garganta',
+    'Com alegria e entusiasmo — curto cada momento, mesmo perdendo',
+    'Depende do jogo… e do placar'
+  ];
+
+  const params = new URLSearchParams(window.location.search);
+  const v = parseInt(params.get('v'));
+  const validVote = v >= 1 && v <= 3;
+
+  // Lê os votos atuais do Firebase
+  async function getCounts() {
+    const res = await fetch(`${DB_URL}${POLL_PATH}.json`);
+    const data = await res.json();
+    return [
+      (data && data.v1) || 0,
+      (data && data.v2) || 0,
+      (data && data.v3) || 0,
+    ];
+  }
+
+  // Registra um voto usando incremento atômico do Firebase
+  async function registerVote(optionIdx) {
+    const key = `v${optionIdx + 1}`;
+    await fetch(`${DB_URL}${POLL_PATH}/${key}.json`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ '.sv': { 'increment': 1 } })
+    });
+  }
+
+  function renderQuestion() {
+    let html = `
+      <span class="eyebrow">Psicoterapia e Afins &bull; Newsletter</span>
+      <h1>Como seu sistema nervoso torce?</h1>
+    `;
+    OPTIONS.forEach((opt, i) => {
+      html += `<a class="option" href="?v=${i + 1}">${opt}</a>`;
+    });
+    document.getElementById('app').innerHTML = html;
+  }
+
+  function renderResults(counts, selectedIdx) {
+    const total = counts.reduce((a, b) => a + b, 0) || 1;
+    let html = `
+      <span class="eyebrow">Psicoterapia e Afins &bull; Newsletter</span>
+      <span class="thanks">Voto registrado. Veja como as outras pessoas respondem:</span>
+      <h1>Como seu sistema nervoso torce?</h1>
+    `;
+
+    OPTIONS.forEach((opt, i) => {
+      const pct = Math.round((counts[i] / total) * 100);
+      const isSelected = i === selectedIdx;
+      html += `
+        <div class="result-item">
+          <div class="result-header">
+            <span class="result-label ${isSelected ? 'bold' : ''}">${opt}</span>
+            <span class="result-pct ${isSelected ? 'highlight' : ''}">${pct}%</span>
+          </div>
+          <div class="bar-wrap">
+            <div class="bar-fill ${isSelected ? 'coral' : ''}" data-width="${pct}"></div>
+          </div>
+        </div>
+      `;
+    });
+
+    const totalVotes = counts.reduce((a, b) => a + b, 0);
+    html += `<p class="total-count">${totalVotes} ${totalVotes === 1 ? 'voto' : 'votos'}</p>`;
+    html += `<a class="back-link" href="https://www.psicoterapiaeafins.com.br">&larr; Voltar ao blog</a>`;
+
+    document.getElementById('app').innerHTML = html;
+
+    // Anima as barras após inserção no DOM
+    requestAnimationFrame(() => {
+      document.querySelectorAll('.bar-fill').forEach(bar => {
+        const w = bar.getAttribute('data-width');
+        bar.style.width = w + '%';
+      });
+    });
+  }
+
+  async function init() {
+    try {
+      if (validVote) {
+        await registerVote(v - 1);
+        const counts = await getCounts();
+        renderResults(counts, v - 1);
+      } else {
+        renderQuestion();
+      }
+    } catch (err) {
+      console.error(err);
+      document.getElementById('app').innerHTML =
+        '<p class="state-msg">Erro ao carregar. Tente novamente em alguns instantes.</p>';
+    }
+  }
+
+  init();
+</script>
+
+</body>
+</html>
